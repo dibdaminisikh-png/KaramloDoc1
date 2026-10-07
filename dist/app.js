@@ -24,7 +24,7 @@ const fa = n => String(n).padStart(2, '0').replace(/\d/g, d => '۰۱۲۳۴۵۶۷
 let index = 0;
 document.getElementById('stages').innerHTML = groups.map((group, g) => `<section class="group" aria-labelledby="group-${g}"><h2 class="group-heading" id="group-${g}"><span>${fa(g+1)}</span><b>${group.title}</b></h2>${group.steps.map(([title, owner, approvals = [], note]) => {
   index++;
-  return `<div class="row"><article class="card" tabindex="0" aria-label="مرحله ${fa(index)}: ${title}، ${owner}"><span class="number" aria-hidden="true">${fa(index)}</span><div><h3>${title}</h3><p class="owner">${owner}</p></div></article>${approvals.length ? `<div class="approvals" aria-label="تأییدها به ترتیب">${approvals.map((a,i) => `${i ? '<span class="approve-arrow" aria-hidden="true">←</span>' : ''}<span class="approval"><i aria-hidden="true"></i>تأیید ${a}</span>`).join('')}<p class="return-note">عدم تأیید: بازگشت به «${title}» برای اصلاح</p></div>` : note === 'docs' ? '<div class="docs-note"><strong>مدارک کامل: ادامه به پیش‌فاکتور</strong>مدارک ناقص: بازگشت به مرحله ثبت و تکمیل اطلاعات</div>' : ''}</div>`;
+  return `<div class="row"><article class="card" role="button" tabindex="0" aria-label="نمایش مرحله ${fa(index)} در مرکز تصویر: ${title}، ${owner}"><span class="number" aria-hidden="true">${fa(index)}</span><div><h3>${title}</h3><p class="owner">${owner}</p></div></article>${approvals.length ? `<div class="approvals" aria-label="تأییدها به ترتیب">${approvals.map((a,i) => `${i ? '<span class="approve-arrow" aria-hidden="true">←</span>' : ''}<span class="approval"><i aria-hidden="true"></i>تأیید ${a}</span>`).join('')}<p class="return-note">عدم تأیید: بازگشت به «${title}» برای اصلاح</p></div>` : note === 'docs' ? '<div class="docs-note"><strong>مدارک کامل: ادامه به پیش‌فاکتور</strong>مدارک ناقص: بازگشت به مرحله ثبت و تکمیل اطلاعات</div>' : ''}</div>`;
 }).join('')}</section>`).join('');
 const motionAllowed = window.matchMedia('(prefers-reduced-motion: no-preference)');
 let frame = 0;
@@ -44,14 +44,43 @@ document.addEventListener('pointermove', e => {
 const rows = [...document.querySelectorAll('.row')];
 const trace = document.querySelector('.process-trace');
 const process = document.querySelector('.process');
+const end = document.querySelector('.terminus.end');
+function layoutTop(element) {
+  let top = 0;
+  for (let node = element; node; node = node.offsetParent) top += node.offsetTop;
+  return top;
+}
+function measureLayout() {
+  // Leave just enough room to center both ends of the process when selected.
+  document.body.style.paddingBottom = '0px';
+  const main = document.querySelector('main');
+  main.style.paddingTop = '';
+  const firstCard = rows[0].querySelector('.card');
+  const firstCenter = layoutTop(firstCard) + firstCard.offsetHeight / 2;
+  if (firstCenter < innerHeight / 2) main.style.paddingTop = `${parseFloat(getComputedStyle(main).paddingTop) + Math.ceil(innerHeight / 2 - firstCenter)}px`;
+  const lastCard = rows.at(-1).querySelector('.card');
+  const needed = layoutTop(lastCard) + lastCard.offsetHeight / 2 + innerHeight / 2 - document.documentElement.scrollHeight;
+  document.body.style.paddingBottom = `${Math.max(0, Math.ceil(needed))}px`;
+  const startDot = document.querySelector('.terminus > span');
+  const endDot = end.querySelector('span');
+  const start = layoutTop(startDot) + startDot.offsetHeight / 2;
+  const finish = layoutTop(endDot) + endDot.offsetHeight / 2;
+  trace.style.top = `${start - layoutTop(process)}px`;
+  trace.style.bottom = 'auto';
+  trace.style.height = `${finish - start}px`;
+  trace.dataset.start = start;
+  queueScroll();
+}
 let scrollFrame = 0;
 let revealObserver;
 function updateScroll() {
   scrollFrame = 0;
-  const rect = process.getBoundingClientRect();
   const focus = window.innerHeight * .55;
-  const progress = Math.min(1, Math.max(0, (focus - rect.top - 33) / (rect.height - 73)));
+  const startScroll = Math.max(0, Number(trace.dataset.start) - focus);
+  const maxScroll = document.documentElement.scrollHeight - innerHeight;
+  const progress = Math.min(1, Math.max(0, (scrollY - startScroll) / Math.max(1, maxScroll - startScroll)));
   trace.style.setProperty('--progress', progress);
+  end.classList.toggle('is-complete', maxScroll > 0 && maxScroll - scrollY <= 1);
   let current = null;
   rows.forEach(row => { if (row.getBoundingClientRect().top < focus) current = row; });
   rows.forEach(row => row.classList.toggle('is-current', row === current));
@@ -70,8 +99,22 @@ function setupMotion() {
   }
   queueScroll();
 }
-rows.forEach(row => row.addEventListener('focusin', () => row.classList.add('is-visible')));
+rows.forEach(row => {
+  row.addEventListener('focusin', () => row.classList.add('is-visible'));
+  const card = row.querySelector('.card');
+  function centerStage() {
+    row.classList.add('is-visible');
+    const top = layoutTop(card) + card.offsetHeight / 2 - innerHeight / 2;
+    window.scrollTo({top: Math.max(0, top), behavior: motionAllowed.matches ? 'smooth' : 'instant'});
+  }
+  card.addEventListener('click', centerStage);
+  card.addEventListener('keydown', event => {
+    if (event.key === 'Enter' || event.key === ' ') {event.preventDefault(); centerStage();}
+  });
+});
 window.addEventListener('scroll', queueScroll, {passive:true});
-window.addEventListener('resize', queueScroll, {passive:true});
+window.addEventListener('resize', measureLayout, {passive:true});
 motionAllowed.addEventListener('change', setupMotion);
+measureLayout();
+document.fonts?.ready.then(measureLayout);
 setupMotion();
