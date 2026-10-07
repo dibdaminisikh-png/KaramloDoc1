@@ -39,3 +39,39 @@ document.addEventListener('pointermove', e => {
     frame=0;
   });
 }, {passive:true});
+
+// Content remains visible without animation support or when reduced motion is requested.
+const rows = [...document.querySelectorAll('.row')];
+const trace = document.querySelector('.process-trace');
+const process = document.querySelector('.process');
+let scrollFrame = 0;
+let revealObserver;
+function updateScroll() {
+  scrollFrame = 0;
+  const rect = process.getBoundingClientRect();
+  const focus = window.innerHeight * .55;
+  const progress = Math.min(1, Math.max(0, (focus - rect.top - 33) / (rect.height - 73)));
+  trace.style.setProperty('--progress', progress);
+  let current = null;
+  rows.forEach(row => { if (row.getBoundingClientRect().top < focus) current = row; });
+  rows.forEach(row => row.classList.toggle('is-current', row === current));
+}
+function queueScroll() {
+  if (!scrollFrame) scrollFrame = requestAnimationFrame(updateScroll);
+}
+function setupMotion() {
+  revealObserver?.disconnect();
+  document.documentElement.classList.toggle('scroll-motion', motionAllowed.matches && 'IntersectionObserver' in window);
+  if (motionAllowed.matches && 'IntersectionObserver' in window) {
+    revealObserver = new IntersectionObserver(entries => {
+      entries.forEach(entry => { if (entry.isIntersecting) {entry.target.classList.add('is-visible'); revealObserver.unobserve(entry.target);} });
+    }, {threshold: .12, rootMargin: '0px 0px -35px 0px'});
+    rows.forEach(row => revealObserver.observe(row));
+  }
+  queueScroll();
+}
+rows.forEach(row => row.addEventListener('focusin', () => row.classList.add('is-visible')));
+window.addEventListener('scroll', queueScroll, {passive:true});
+window.addEventListener('resize', queueScroll, {passive:true});
+motionAllowed.addEventListener('change', setupMotion);
+setupMotion();
